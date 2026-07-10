@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly API_ENDPOINT="http://127.0.0.1:10006/v1/chat/completions"
+readonly API_ENDPOINT="http://127.0.0.1:10179/v1/chat/completions"
 readonly CURL_TIMEOUT=30
-readonly MAX_CONTEXT_ITEMS=50
+readonly MAX_CONTEXT_ITEMS=100
 readonly MAX_STDIN_SIZE=1048576
 
 debug() {
@@ -79,8 +79,8 @@ if [[ -t 0 ]]; then
   CURRENT_SHELL=${SHELL}
   CURRENT_OS=$(uname -s)
 
-  DIR_CONTENTS=$(ls -la 2>/dev/null | head -n "$MAX_CONTEXT_ITEMS" || echo "Unable to list directory")
-  if [[ $(ls -la 2>/dev/null | wc -l) -gt $MAX_CONTEXT_ITEMS ]]; then
+  DIR_CONTENTS=$(ls -a 2>/dev/null | head -n "$MAX_CONTEXT_ITEMS" || echo "Unable to list directory")
+  if [[ $(ls -a 2>/dev/null | wc -l) -gt $MAX_CONTEXT_ITEMS ]]; then
     DIR_CONTENTS="${DIR_CONTENTS}
   ... (truncated, more than $MAX_CONTEXT_ITEMS items)"
   fi
