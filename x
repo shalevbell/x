@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly API_ENDPOINT="http://127.0.0.1:10179/v1/chat/completions"
-readonly CURL_TIMEOUT=30
 readonly MAX_CONTEXT_ITEMS=100
 readonly MAX_STDIN_SIZE=1048576
 
@@ -32,7 +30,10 @@ if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
     --debug      Enable debug output
     --help, -h   Show this help message
 
-    Set LITELLM_API_KEY and LITELLM_MODEL environment variables.
+    Uses the 'claude' CLI to query Claude. Requires Claude Code to be
+    installed and authenticated (run 'claude /login' if needed).
+    Set CLAUDE_MODEL to choose a model (e.g. 'sonnet', 'haiku', 'opus');
+    defaults to whatever model Claude Code is configured to use.
 
 EOF
   exit 0
@@ -44,20 +45,8 @@ if [[ "${1:-}" == "--debug" ]]; then
   shift
 fi
 
-for cmd in curl jq; do
-  if ! command -v "$cmd" &> /dev/null; then
-    echo "Error: $cmd is not installed" >&2
-    exit 1
-  fi
-done
-
-if [[ -z "${LITELLM_API_KEY:-}" ]]; then
-  echo "Error: LITELLM_API_KEY not set" >&2
-  exit 1
-fi
-
-if [[ -z "${LITELLM_MODEL:-}" ]]; then
-  echo "Error: LITELLM_MODEL not set" >&2
+if ! command -v claude &> /dev/null; then
+  echo "Error: claude is not installed" >&2
   exit 1
 fi
 
@@ -148,58 +137,30 @@ EOF
   )
 fi
 
-debug "Model: $LITELLM_MODEL"
+debug "Model: ${CLAUDE_MODEL:-(default)}"
 debug "User input: $USER_INPUT"
+debug "Prompt: $PROMPT_TEXT"
 
-JSON_PAYLOAD=$(jq -n \
-  --arg model "$LITELLM_MODEL" \
-  --arg content "$PROMPT_TEXT" \
-  '{
-  model: $model,
-  messages: [{role: "user", content: $content}]
-  }')
+CLAUDE_ARGS=(-p --output-format text --tools "" --no-session-persistence)
+if [[ -n "${CLAUDE_MODEL:-}" ]]; then
+  CLAUDE_ARGS+=(--model "$CLAUDE_MODEL")
+fi
 
-debug "JSON Payload: $JSON_PAYLOAD"
-debug "Sending request to LiteLLM..."
+debug "Running: claude ${CLAUDE_ARGS[*]} <prompt>"
 
 set +e
-HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" \
-  --max-time "$CURL_TIMEOUT" \
-  -X POST "$API_ENDPOINT" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ${LITELLM_API_KEY}" \
-  -d "$JSON_PAYLOAD" 2>&1)
-CURL_EXIT_CODE=$?
+RESPONSE=$(claude "${CLAUDE_ARGS[@]}" "$PROMPT_TEXT" < /dev/null 2>&1)
+CLAUDE_EXIT_CODE=$?
 set -e
 
-if [[ $CURL_EXIT_CODE -eq 28 ]]; then
-  echo "Error: API request timed out after ${CURL_TIMEOUT}s" >&2
-  exit 1
-elif [[ $CURL_EXIT_CODE -ne 0 ]]; then
-  debug "curl failed with exit code $CURL_EXIT_CODE"
-  debug "curl output: $HTTP_RESPONSE"
-  echo "Error: Failed to connect to LiteLLM API" >&2
+if [[ $CLAUDE_EXIT_CODE -ne 0 ]]; then
+  echo "Error: claude command failed" >&2
+  echo "Details: $RESPONSE" >&2
   exit 1
 fi
-
-HTTP_CODE=$(echo "$HTTP_RESPONSE" | tail -1)
-RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
-
-debug "Response received (HTTP $HTTP_CODE)"
-debug "Full response: $RESPONSE_BODY"
-
-if [[ "$HTTP_CODE" != "200" ]]; then
-  echo "Error: API request failed (HTTP $HTTP_CODE)" >&2
-  ERROR_MSG=$(echo "$RESPONSE_BODY" | jq -r '.error.message // "Unknown error"' 2>/dev/null || echo "Unknown error")
-  echo "Error details: $ERROR_MSG" >&2
-  exit 1
-fi
-
-RESPONSE=$(echo "$RESPONSE_BODY" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
 
 if [[ -z "$RESPONSE" ]]; then
-  echo "Error: Failed to extract response from API" >&2
-  debug "API Response: $RESPONSE_BODY"
+  echo "Error: Received an empty response from claude" >&2
   exit 1
 fi
 
