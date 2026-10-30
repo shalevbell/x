@@ -33,7 +33,7 @@ if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
     Uses the 'claude' CLI to query Claude. Requires Claude Code to be
     installed and authenticated (run 'claude /login' if needed).
     Set CLAUDE_MODEL to choose a model (e.g. 'sonnet', 'haiku', 'opus');
-    defaults to whatever model Claude Code is configured to use.
+    defaults to 'haiku' for speed.
 
 EOF
   exit 0
@@ -91,12 +91,12 @@ if [[ -t 0 ]]; then
 
   Context:
   - Current directory: ${CURRENT_DIR}
-  - Content of current directory:
-  ${DIR_CONTENTS}
   - Username: ${CURRENT_USER}
   - Shell: ${CURRENT_SHELL}
   - OS: ${CURRENT_OS}
-
+  - Content of current directory:
+  ${DIR_CONTENTS}
+ 
   Instruction: ${USER_INPUT}
 
   Command:
@@ -137,14 +137,13 @@ EOF
   )
 fi
 
-debug "Model: ${CLAUDE_MODEL:-(default)}"
+debug "Model: ${CLAUDE_MODEL:-haiku}"
 debug "User input: $USER_INPUT"
 debug "Prompt: $PROMPT_TEXT"
 
-CLAUDE_ARGS=(-p --output-format text --tools "" --no-session-persistence)
-if [[ -n "${CLAUDE_MODEL:-}" ]]; then
-  CLAUDE_ARGS+=(--model "$CLAUDE_MODEL")
-fi
+CLAUDE_ARGS=(-p --output-format text --tools "" --no-session-persistence
+  --strict-mcp-config --disable-slash-commands --setting-sources ""
+  --model "${CLAUDE_MODEL:-haiku}")
 
 debug "Running: claude ${CLAUDE_ARGS[*]} <prompt>"
 
